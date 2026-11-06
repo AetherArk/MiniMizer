@@ -1,0 +1,5 @@
+# Stage 2 historical runtime; use a separate environment
+numpy==1.26.4
+scipy==1.15.2
+rdkit==2025.3.6
+openmm==8.3.1

@@ -1,0 +1,59 @@
+{
+  "Fe_SG_A": 2.299122441280585,
+  "candidates": [
+    {
+      "Fe_distance_A": 7.861200226428531,
+      "SG_Fe_atom_angle_deg": 140.5129889630631,
+      "atom_name": "O19",
+      "element": "O",
+      "fixed": false,
+      "formal_charge": 0,
+      "source_index": 0,
+      "supported_azole_or_imine_donor": false
+    },
+    {
+      "Fe_distance_A": 9.320964971503756,
+      "SG_Fe_atom_angle_deg": 148.27058358982296,
+      "atom_name": "N37",
+      "element": "N",
+      "fixed": false,
+      "formal_charge": 0,
+      "source_index": 2,
+      "supported_azole_or_imine_donor": false
+    },
+    {
+      "Fe_distance_A": 6.499370507979985,
+      "SG_Fe_atom_angle_deg": 175.26273142453428,
+      "atom_name": "N20",
+      "element": "N",
+      "fixed": false,
+      "formal_charge": 0,
+      "source_index": 16,
+      "supported_azole_or_imine_donor": true
+    },
+    {
+      "Fe_distance_A": 4.206923103647131,
+      "SG_Fe_atom_angle_deg": 176.30416118793525,
+      "atom_name": "N38",
+      "element": "N",
+      "fixed": false,
+      "formal_charge": 0,
+      "source_index": 18,
+      "supported_azole_or_imine_donor": true
+    },
+    {
+      "Fe_distance_A": 2.1503025368538258,
+      "SG_Fe_atom_angle_deg": 174.13635268702424,
+      "atom_name": "N21",
+      "element": "N",
+      "fixed": true,
+      "formal_charge": 0,
+      "source_index": 21,
+      "supported_azole_or_imine_donor": true
+    }
+  ],
+  "fixed_ligand_source_indices": [
+    21
+  ],
+  "rule": "unchanged source neutral aromatic nH0 or imine NX2H0 donor; Fe distance <=3.0 A and SG-Fe-donor >=140 degrees; other heteroatoms <2.8 A abstain"
+}

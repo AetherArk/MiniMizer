@@ -1,0 +1,178 @@
+{
+  "protocol": "0.1",
+  "pose_id": "alphafold3/OCNT-2312554/seed-11/sample-3",
+  "optimization": {
+    "k_kJ_mol_nm2": 12552.0,
+    "initial_energy_kJ_mol": 8864.867107518767,
+    "final_energy_kJ_mol": 479.69058093198487,
+    "scipy_success": true,
+    "message": "CONVERGENCE: NORM OF PROJECTED GRADIENT <= PGTOL",
+    "iterations": 106,
+    "evaluations": 115,
+    "max_gradient_kJ_mol_nm": 8.599621013671946,
+    "rms_gradient_kJ_mol_nm": 2.2171110522427826,
+    "fixed_max_movement_nm": 0.0
+  },
+  "start_max_difference_nm": 0.0,
+  "final_max_difference_nm": 0.0,
+  "final_array_byte_identical": true,
+  "candidate_sha256": "2c259851daba386c6fdd1f4b87bb18e4da9d759c30a62b64959691f37ebf6673",
+  "candidate_byte_identical": true,
+  "boundary_pass": true,
+  "boundary_error": null,
+  "boundary_threshold_kJ_mol": 1e-05,
+  "physical_checks": "not rerun; historical REFINED_PASS is provenance only",
+  "retention_status": "REPLAY_DIAGNOSTICS_ONLY",
+  "reproduction_pass": true,
+  "stage1_arm": "k300_ks1000_orientation0",
+  "stage1_arm_matches_history": true,
+  "boundary": {
+    "selected_residues": [
+      "108",
+      "114",
+      "119",
+      "120",
+      "210",
+      "213",
+      "215",
+      "241",
+      "300",
+      "301",
+      "304",
+      "305",
+      "309",
+      "369",
+      "442"
+    ],
+    "moved_residues": [
+      "108",
+      "114",
+      "119",
+      "120",
+      "210",
+      "213",
+      "215",
+      "241",
+      "300",
+      "301",
+      "304",
+      "305",
+      "309",
+      "369",
+      "442"
+    ],
+    "independent_5A_selection_exact": true,
+    "outside_selected_all_atoms_exact": true,
+    "subset_atoms": 396,
+    "boundary_atoms": [
+      1716,
+      1747,
+      1795,
+      1828,
+      1875,
+      1920,
+      3314,
+      3351,
+      3374,
+      3414,
+      3418,
+      3446,
+      3852,
+      3884,
+      4840,
+      4885,
+      4909,
+      4954,
+      4986,
+      5011,
+      5948,
+      5978,
+      7163,
+      7183
+    ],
+    "full_delta_energy": -8188.034653614799,
+    "omitted_distant_nonbonded_delta": 197.14187297609737,
+    "pocket_delta_energy": -8385.176526586782,
+    "energy_delta_identity_error": -4.114554030820727e-09,
+    "finite_difference_gradient_error": 3.381415397640808e-05
+  },
+  "stage1_comparison": [
+    {
+      "arm": "k10_ks100_orientation0",
+      "iterations": 211,
+      "gradient_max_abs": 6.356221943515372e-05,
+      "rmsd_A": 0.13255596302442665,
+      "historical_metrics_exact": true
+    },
+    {
+      "arm": "k30_ks100_orientation0",
+      "iterations": 156,
+      "gradient_max_abs": 7.752313073397521e-05,
+      "rmsd_A": 0.08694754165587348,
+      "historical_metrics_exact": true
+    },
+    {
+      "arm": "k100_ks100_orientation0",
+      "iterations": 99,
+      "gradient_max_abs": 8.548897173366043e-05,
+      "rmsd_A": 0.04997249243333711,
+      "historical_metrics_exact": true
+    },
+    {
+      "arm": "k300_ks100_orientation0",
+      "iterations": 83,
+      "gradient_max_abs": 4.0305734233747614e-05,
+      "rmsd_A": 0.027348826909637466,
+      "historical_metrics_exact": true
+    },
+    {
+      "arm": "k10_ks1000_orientation0",
+      "iterations": 211,
+      "gradient_max_abs": 6.356221943515372e-05,
+      "rmsd_A": 0.13255596302442665,
+      "historical_metrics_exact": true
+    },
+    {
+      "arm": "k30_ks1000_orientation0",
+      "iterations": 156,
+      "gradient_max_abs": 7.752313073397521e-05,
+      "rmsd_A": 0.08694754165587348,
+      "historical_metrics_exact": true
+    },
+    {
+      "arm": "k100_ks1000_orientation0",
+      "iterations": 99,
+      "gradient_max_abs": 8.548897173366043e-05,
+      "rmsd_A": 0.04997249243333711,
+      "historical_metrics_exact": true
+    },
+    {
+      "arm": "k300_ks1000_orientation0",
+      "iterations": 83,
+      "gradient_max_abs": 4.0305734233747614e-05,
+      "rmsd_A": 0.027348826909637466,
+      "historical_metrics_exact": true
+    }
+  ],
+  "historical_bytes_exact": {
+    "source_optimized_with_H.rdkit": true,
+    "starting_positions.npy": true,
+    "prepared_only.pdb": true,
+    "ligand.rdkit": true
+  },
+  "runtime": {
+    "stage1": {
+      "numpy": "2.1.3",
+      "scipy": "1.17.1",
+      "rdkit": "2026.03.2"
+    },
+    "stage2": {
+      "openmm": "8.3.1",
+      "numpy": "1.26.4",
+      "scipy": "1.15.2",
+      "rdkit": "2025.03.6"
+    },
+    "image_id": "sha256:2a183c605e5a0d8be696ff06de09b884cd4e5932ead5b2e48dfebf735b4f979d"
+  },
+  "command": "python -B minimize.py example replay --md-image local/md_openmm:0.1"
+}

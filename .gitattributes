@@ -1,0 +1,4 @@
+# Preserve hash-bound scientific input bytes across platforms.
+example/*.pdb -text whitespace=-blank-at-eol
+example/*.npy -text
+example/*.gz -text
