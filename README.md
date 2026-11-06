@@ -17,6 +17,7 @@ python minimize.py example output --md-image local/md_openmm:0.1
 ## Inputs
 
 - `input.pdb`: starting ligand coordinates and receptor heavy atoms; explicit ligand CONECT graph.
+- JSON interface `1.0` (separate from protocol `0.1`): [`config` schema](schemas/config.schema.json), [`report` schema](schemas/report.schema.json); enforced before optimization / success; integer fields require integer JSON tokens.
 - `config.json`: authoritative ligand SMILES, atom mapping, chemical state, fixed anchors, heme-name mapping.
 - `system.xml.gz`: prepared OpenFF/CHARMM parameters in receptor-then-ligand atom order.
 - `atoms.json.gz`: receptor particle identities/order, including hydrogens.
@@ -27,7 +28,7 @@ python minimize.py example output --md-image local/md_openmm:0.1
 
 - `prepared_only.pdb`: MMFF-selected pose.
 - `local/k12552/candidate.pdb`, `positions.npy`: minimized candidate; retained even if validation fails.
-- `report.json`: actual convergence, fixed-atom and boundary-check status; nonzero exit on failure.
+- `report.json`: actual convergence, fixed-atom and boundary-check status; nonzero exit on failure. Execution failures carry `error`, without fabricated metrics; invalid inputs stop before output creation.
 - Boundary energy tolerance: `1e-5` kJ/mol; unchanged v0.1 settings. PoseBusters not run.
 
 ## Tests

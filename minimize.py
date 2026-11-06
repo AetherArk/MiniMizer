@@ -13,7 +13,7 @@ import sys
 import numpy as np
 from rdkit import Chem
 from minimizer import stereo as mm
-from minimizer import ligand
+from minimizer import ligand, contracts
 
 
 def save(path, value):
@@ -21,9 +21,7 @@ def save(path, value):
 
 
 def validate(packet):
-    config = json.loads((packet / 'config.json').read_text())
-    if config['protocol'] != '0.1':
-        raise ValueError('Unsupported protocol')
+    config = contracts.load(packet / 'config.json', 'config')
     for name in ('input.pdb', 'system.xml.gz', 'atoms.json.gz', 'receptor-positions.npy'):
         if not (packet / name).is_file():
             raise ValueError('Missing prepared input: ' + name)
@@ -54,7 +52,15 @@ def validate(packet):
     heavy = {key for key, a in identities.items() if a['element'] != 'H'}
     if not heavy <= seen:
         raise ValueError('Missing receptor heavy atoms')
-    ligand.pdb_binding(packet / 'input.pdb', config['mapping'], config['source_smiles'])
+    mol, _, _ = ligand.pdb_binding(packet / 'input.pdb', config['mapping'], config['source_smiles'])
+    if any(i >= mol.GetNumAtoms() for i in config['fixed_ligand_source_indices']):
+        raise ValueError('Invalid axial indices')
+    full = Chem.AddHs(Chem.Mol(mol))
+    state = config['ligand_state']
+    if (Chem.GetFormalCharge(full) != state['source_formal_charge']
+            or full.GetNumAtoms() != state['atom_count']
+            or sum(a.GetAtomicNum() == 1 for a in full.GetAtoms()) != state['H_count']):
+        raise ValueError('Ligand force-field state mismatch')
     return config
 
 
@@ -129,6 +135,20 @@ def main():
     if out == packet or out in packet.parents:
         raise ValueError('Output must not contain packet')
     out.mkdir(parents=True, exist_ok=False)
+    try:
+        report = execute(packet, out, config, args)
+    except Exception as exc:
+        report = dict(schema_version=contracts.SCHEMA_VERSION, protocol='0.1',
+                      validation_pass=False, stage1_arm=None,
+                      error=f'{type(exc).__name__}: {exc}')
+    contracts.validate(report, 'report')
+    save(out / 'report.json', report)
+    print(json.dumps(report, indent=2, allow_nan=False))
+    if not report['validation_pass']:
+        raise SystemExit(1)
+
+
+def execute(packet, out, config, args):
     arm = stage1(packet, out, config)
     for name in ('system.xml', 'atoms.json'):
         (out / name).write_bytes(gzip.decompress((packet / (name + '.gz')).read_bytes()))
@@ -144,12 +164,9 @@ def main():
     else:
         cmd = [args.md_python or sys.executable, '-m', 'minimizer.refine', str(packet), str(out)]
     subprocess.run(cmd, cwd=repo, check=True)
-    report = json.loads((out / 'report.json').read_text())
+    report = contracts.load_json(out / 'report.json', 'report')
     report['stage1_arm'] = arm
-    save(out / 'report.json', report)
-    print(json.dumps(report, indent=2))
-    if not report['validation_pass']:
-        raise SystemExit(1)
+    return contracts.validate(report, 'report')
 
 
 if __name__ == '__main__':

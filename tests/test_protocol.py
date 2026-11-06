@@ -11,7 +11,7 @@ import unittest
 import numpy as np
 from rdkit import Chem
 import minimize
-from minimizer import ligand, stereo
+from minimizer import contracts, ligand, stereo
 
 PACKET = Path(__file__).resolve().parents[1] / 'example'
 
@@ -64,7 +64,23 @@ class ProtocolTests(unittest.TestCase):
             (d / 'input.pdb').write_bytes(writer(xyz)[0])
             subprocess.run([sys.executable, '-B', str(PACKET.parent / 'minimize.py'), str(d), str(out),
                             '--md-image', os.environ['MINIMIZER_MD_IMAGE']], check=True)
-            report = json.loads((out / 'report.json').read_text())
+            report = contracts.load(out / 'report.json', 'report')
+            self.assertEqual(report['schema_version'], '1.0')
+            self.assertTrue(report['stage1_arm'])
+            # Validate real assembled output, then challenge every required field.
+            for key in report:
+                bad = copy.deepcopy(report)
+                del bad[key]
+                with self.subTest(missing=key), self.assertRaises(ValueError):
+                    contracts.validate(bad, 'report')
+            for key, value in [('final_energy_kJ_mol', float('nan')),
+                               ('final_energy_kJ_mol', float('inf')),
+                               ('iterations', True), ('scipy_success', 'true'),
+                               ('fixed_max_movement_nm', 0.1), ('extra', 0)]:
+                bad = copy.deepcopy(report)
+                bad['optimization'][key] = value
+                with self.subTest(metric=key, value=value), self.assertRaises(ValueError):
+                    contracts.validate(bad, 'report')
             self.assertTrue(report['validation_pass'])
             self.assertTrue(report['optimization']['scipy_success'])
             self.assertTrue((out / report['candidate']).is_file())

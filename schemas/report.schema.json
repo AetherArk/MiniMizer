@@ -1,0 +1,215 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MiniMizer report 1.0",
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "schema_version": {
+          "const": "1.0",
+          "description": "JSON interface version."
+        },
+        "protocol": {
+          "const": "0.1",
+          "description": "Scientific minimization protocol."
+        },
+        "validation_pass": {
+          "type": "boolean",
+          "description": "Workflow gates passed; not a physical-QC claim."
+        },
+        "stage1_arm": {
+          "type": "string",
+          "description": "Selected MMFF arm.",
+          "minLength": 1
+        },
+        "optimization": {
+          "type": "object",
+          "properties": {
+            "k_kJ_mol_nm2": {
+              "const": 12552.0,
+              "description": "Positional restraint constant, kJ/mol/nm\u00b2."
+            },
+            "initial_energy_kJ_mol": {
+              "type": "number",
+              "description": "Initial pocket objective, kJ/mol."
+            },
+            "final_energy_kJ_mol": {
+              "type": "number",
+              "description": "Final pocket objective, kJ/mol."
+            },
+            "scipy_success": {
+              "type": "boolean",
+              "description": "L-BFGS-B convergence flag."
+            },
+            "message": {
+              "type": "string",
+              "description": "Optimizer termination message.",
+              "minLength": 1
+            },
+            "iterations": {
+              "type": "integer",
+              "description": "Optimizer iterations.",
+              "minimum": 0
+            },
+            "evaluations": {
+              "type": "integer",
+              "description": "Objective evaluations.",
+              "minimum": 1
+            },
+            "max_gradient_kJ_mol_nm": {
+              "type": "number",
+              "description": "Largest absolute gradient component, kJ/mol/nm.",
+              "minimum": 0
+            },
+            "rms_gradient_kJ_mol_nm": {
+              "type": "number",
+              "description": "RMS gradient component, kJ/mol/nm.",
+              "minimum": 0
+            },
+            "fixed_max_movement_nm": {
+              "type": "number",
+              "description": "Largest fixed-atom coordinate change, nm.",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "k_kJ_mol_nm2",
+            "initial_energy_kJ_mol",
+            "final_energy_kJ_mol",
+            "scipy_success",
+            "message",
+            "iterations",
+            "evaluations",
+            "max_gradient_kJ_mol_nm",
+            "rms_gradient_kJ_mol_nm",
+            "fixed_max_movement_nm"
+          ],
+          "additionalProperties": false
+        },
+        "candidate": {
+          "const": "local/k12552/candidate.pdb",
+          "description": "Candidate path relative to output directory; may fail validation."
+        },
+        "boundary_pass": {
+          "type": "boolean",
+          "description": "Full versus pocket objective gate."
+        },
+        "boundary_error": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Boundary failure reason; null on pass."
+        },
+        "boundary_threshold_kJ_mol": {
+          "const": 1e-05,
+          "description": "Boundary energy tolerance, kJ/mol."
+        },
+        "physical_checks": {
+          "const": "PoseBusters not run",
+          "description": "Physical QC coverage."
+        }
+      },
+      "required": [
+        "schema_version",
+        "protocol",
+        "validation_pass",
+        "stage1_arm",
+        "optimization",
+        "candidate",
+        "boundary_pass",
+        "boundary_error",
+        "boundary_threshold_kJ_mol",
+        "physical_checks"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "boundary_pass": {
+                "const": true
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "boundary_error": {
+                "type": "null"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "boundary_error": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "validation_pass": {
+                "const": true
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "boundary_pass": {
+                "const": true
+              },
+              "optimization": {
+                "properties": {
+                  "scipy_success": {
+                    "const": true
+                  },
+                  "fixed_max_movement_nm": {
+                    "const": 0
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "properties": {
+        "schema_version": {
+          "const": "1.0",
+          "description": "JSON interface version."
+        },
+        "protocol": {
+          "const": "0.1",
+          "description": "Scientific minimization protocol."
+        },
+        "validation_pass": {
+          "const": false
+        },
+        "stage1_arm": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Selected MMFF arm, or null if unavailable."
+        },
+        "error": {
+          "type": "string",
+          "description": "Execution or contract failure; unavailable metrics omitted.",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "schema_version",
+        "protocol",
+        "validation_pass",
+        "stage1_arm",
+        "error"
+      ],
+      "additionalProperties": false
+    }
+  ]
+}

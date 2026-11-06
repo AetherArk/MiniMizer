@@ -137,7 +137,7 @@ def run(packet, out):
         verify(out, local)
     except AssertionError as exc:
         boundary_pass, boundary_error = False, str(exc)
-    report = dict(protocol='0.1', optimization=opt,
+    report = dict(schema_version='1.0', protocol='0.1', optimization=opt,
                   candidate='local/k12552/candidate.pdb',
                   boundary_pass=boundary_pass, boundary_error=boundary_error,
                   boundary_threshold_kJ_mol=1e-5,

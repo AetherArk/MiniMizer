@@ -1,4 +1,5 @@
 {
+  "schema_version": "1.0",
   "protocol": "0.1",
   "heme_pdb_names": {
     "C70": "CMA",
