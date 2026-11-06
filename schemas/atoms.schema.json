@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "array",
+  "minItems": 1,
+  "items": {
+    "type": "object",
+    "properties": {
+      "index": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "name": {
+        "type": "string",
+        "minLength": 1
+      },
+      "resid": {
+        "type": "string",
+        "minLength": 1
+      },
+      "chain": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 1
+      },
+      "element": {
+        "type": "string",
+        "pattern": "^[A-Z][a-z]?$"
+      }
+    },
+    "required": [
+      "index",
+      "name",
+      "resid",
+      "chain",
+      "element"
+    ],
+    "additionalProperties": false
+  }
+}

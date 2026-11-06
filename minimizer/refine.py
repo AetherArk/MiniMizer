@@ -19,10 +19,18 @@ def save(path, value):
     path.write_text(json.dumps(value, indent=2, allow_nan=False) + '\n')
 
 
-def run(packet, out):
-    config = json.loads((packet / 'config.json').read_text())
+def run(entry, out):
+    from minimize import validate
+    config = validate(entry)
+    full = mm.XmlSerializer.deserialize((out / 'system.xml').read_text())
+    if '--validate-only' in sys.argv:
+        # Compile forces and validate particle indices before ligand optimization.
+        integrator = mm.VerletIntegrator(.001)
+        context = mm.Context(full, integrator, mm.Platform.getPlatformByName('Reference'))
+        del context, integrator
+        return
     meta = json.loads((out / 'atoms.json').read_text())
-    mapping = config['mapping']
+    mapping = config['ligand']['mapping']
     lig = Chem.Mol((out / 'source_optimized_with_H.rdkit').read_bytes())
     lines = (out / 'prepared_only.pdb').read_text().splitlines(keepends=True)
     byserial = {int(l[6:11]): l for l in lines if l.startswith(('ATOM  ', 'HETATM'))}
@@ -34,28 +42,27 @@ def run(packet, out):
     # md_worker.py reads it before forming x0. Do not silently remove this rounding.
     lig = Chem.Mol(lig.ToBinary())
     from .stereo import signature
-    authority = Chem.AddHs(Chem.MolFromSmiles(config['source_smiles']))
+    authority = Chem.AddHs(Chem.MolFromSmiles(config['ligand']['source_smiles']))
     if signature(lig) != signature(authority):
         raise ValueError('Ligand state or atom order changed')
-    state = config['ligand_state']
+    state = config['ligand']['ligand_state']
     if (Chem.GetFormalCharge(lig) != state['source_formal_charge']
             or lig.GetNumAtoms() != state['atom_count']
             or sum(a.GetAtomicNum() == 1 for a in lig.GetAtoms()) != state['H_count']):
         raise ValueError('Ligand force-field state mismatch')
     (out / 'ligand.rdkit').write_bytes(lig.ToBinary())
-    receptor = np.load(packet / 'receptor-positions.npy', allow_pickle=False)
+    receptor = np.load(config['receptor']['coordinates']['path'], allow_pickle=False)
     n, nh = len(receptor), lig.GetNumHeavyAtoms()
     x0 = np.concatenate([receptor, lig.GetConformer().GetPositions() / 10])
     lp = x0[n:n+nh]
     selected = {a['resid'] for a in meta if a['chain'] == 'A' and a['element'] != 'H'
                 and np.min(np.linalg.norm(lp-x0[a['index']], axis=1)) <= .5}
     backbone = {'N', 'CA', 'C', 'O', 'OXT', 'H', 'H1', 'H2', 'H3', 'HA', 'HA2', 'HA3'}
-    anchors = config['fixed_ligand_source_indices']
+    anchors = config['ligand']['fixed_ligand_source_indices']
     movable = [a['index'] for a in meta if a['chain'] == 'A' and a['resid'] in selected
                and a['name'] not in backbone and not (a['resid'] == '442' and a['name'] == 'SG')]
     movable += [n+i for i in range(lig.GetNumAtoms()) if i not in anchors]
     # Rebuild only coordinate-dependent restraints; preserve all frozen chemistry.
-    full = mm.XmlSerializer.deserialize((out / 'system.xml').read_text())
     if full.getNumParticles() != len(x0):
         raise ValueError('Force-field particle count mismatch')
     external = [i for i, f in enumerate(full.getForces()) if isinstance(f, mm.CustomExternalForce)]

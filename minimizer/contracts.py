@@ -32,7 +32,7 @@ def validate(value, kind):
     return value
 
 
-def load_json(path, kind):
+def parse_json(text, kind):
     def unique(pairs):
         result = {}
         for key, value in pairs:
@@ -41,10 +41,14 @@ def load_json(path, kind):
             result[key] = value
         return result
     try:
-        value = json.loads(path.read_text(), object_pairs_hook=unique)
+        value = json.loads(text, object_pairs_hook=unique)
     except json.JSONDecodeError as exc:
         raise ValueError(f'{kind}: invalid JSON at line {exc.lineno}') from None
     return value
+
+
+def load_json(path, kind):
+    return parse_json(path.read_text(), kind)
 
 
 def load(path, kind):

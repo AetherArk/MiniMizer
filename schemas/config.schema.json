@@ -1,166 +1,286 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "MiniMizer config 1.0",
+  "title": "MiniMizer input 2.0 (protocol 0.1)",
   "type": "object",
   "properties": {
     "schema_version": {
-      "const": "1.0",
-      "description": "JSON interface version; independent of protocol."
+      "const": "2.0"
     },
     "protocol": {
       "const": "0.1",
-      "description": "Scientific minimization protocol."
+      "description": "Fixed scientific preset, not adjustable parameters: MMFF94s ligand repair with position_k [10,30,100,300], stereo_k [100,1000], at most 4 relative centers, L-BFGS-B maxiter 3000/maxls 50/maxcor 20/ftol 1e-13/gtol 1e-4; stereo-valid converged arms with rounded heavy RMSD <=0.5 A and max movement <=1 A, selected by (RMSD, arm). Stage 2 uses frozen CHARMM36/OpenFF parameters; chain A sidechains of residues within 5 A of stage-1 ligand heavy atoms move, except backbone and Cys442 SG; heme chain H and other receptor atoms stay fixed. Ligand atoms except supplied anchors move. Heavy movable atoms restrained at 12552 kJ/mol/nm^2 to fresh starting coordinates. Pocket objective, boundary and fixed-atom checks, historical coordinate rounding and Reference-platform L-BFGS-B maxiter 500/ftol 1e-12/gtol 10/maxls 30/maxcor 10 are invariant. Implementation in minimizer/stereo.py, ligand.py, refine.py, pocket.py and boundary.py defines the complete preset; no per-run overrides."
     },
-    "heme_pdb_names": {
-      "type": "object",
-      "description": "Input heme PDB name to prepared atom name.",
-      "propertyNames": {
-        "minLength": 1,
-        "maxLength": 4
-      },
-      "additionalProperties": {
-        "type": "string",
-        "minLength": 1,
-        "maxLength": 4
-      }
-    },
-    "source_smiles": {
-      "type": "string",
-      "description": "Authoritative ligand SMILES, including state/stereochemistry.",
-      "minLength": 1
-    },
-    "mapping": {
+    "ligand": {
       "type": "object",
       "properties": {
-        "package_graphs": {
+        "starting_complex": {
           "type": "object",
           "properties": {
-            "L": {
+            "path": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Local file path, absolute or relative to this JSON file; no URL fetching."
+            },
+            "format": {
+              "const": "pdb"
+            },
+            "units": {
+              "const": "angstrom"
+            }
+          },
+          "required": [
+            "path",
+            "format",
+            "units"
+          ],
+          "additionalProperties": false
+        },
+        "source_smiles": {
+          "type": "string",
+          "description": "Authoritative ligand SMILES, including state/stereochemistry.",
+          "minLength": 1
+        },
+        "mapping": {
+          "type": "object",
+          "properties": {
+            "package_graphs": {
               "type": "object",
               "properties": {
-                "exact_source_smiles": {
-                  "type": "string",
-                  "description": "Must match authoritative ligand state.",
-                  "minLength": 1
-                },
-                "atoms": {
-                  "type": "array",
-                  "minItems": 1,
-                  "items": {
-                    "type": "object",
-                    "properties": {
-                      "source_graph_atom_index": {
-                        "type": "integer",
-                        "description": "Zero-based source SMILES atom index.",
-                        "minimum": 0
-                      },
-                      "package_atom_name": {
-                        "type": "string",
-                        "description": "Ligand PDB atom name.",
-                        "minLength": 1,
-                        "maxLength": 4
-                      },
-                      "package_serial": {
-                        "type": "integer",
-                        "description": "Ligand PDB serial.",
-                        "minimum": 1
-                      },
-                      "element": {
-                        "type": "string",
-                        "description": "Element symbol.",
-                        "pattern": "^[A-Z][a-z]?$"
-                      },
-                      "formal_charge": {
-                        "type": "integer",
-                        "description": "Atom formal charge, elementary charges."
-                      },
-                      "explicit_H": {
-                        "type": "integer",
-                        "description": "Explicit hydrogen count.",
-                        "minimum": 0
-                      },
-                      "implicit_H": {
-                        "type": "integer",
-                        "description": "Implicit hydrogen count.",
-                        "minimum": 0
-                      }
+                "L": {
+                  "type": "object",
+                  "properties": {
+                    "exact_source_smiles": {
+                      "type": "string",
+                      "description": "Must match authoritative ligand state.",
+                      "minLength": 1
                     },
-                    "required": [
-                      "source_graph_atom_index",
-                      "package_atom_name",
-                      "package_serial",
-                      "element",
-                      "formal_charge",
-                      "explicit_H",
-                      "implicit_H"
-                    ],
-                    "additionalProperties": false
+                    "atoms": {
+                      "type": "array",
+                      "minItems": 1,
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "source_graph_atom_index": {
+                            "type": "integer",
+                            "description": "Zero-based source SMILES atom index.",
+                            "minimum": 0
+                          },
+                          "package_atom_name": {
+                            "type": "string",
+                            "description": "Ligand PDB atom name.",
+                            "minLength": 1,
+                            "maxLength": 4
+                          },
+                          "package_serial": {
+                            "type": "integer",
+                            "description": "Ligand PDB serial.",
+                            "minimum": 1
+                          },
+                          "element": {
+                            "type": "string",
+                            "description": "Element symbol.",
+                            "pattern": "^[A-Z][a-z]?$"
+                          },
+                          "formal_charge": {
+                            "type": "integer",
+                            "description": "Atom formal charge, elementary charges."
+                          },
+                          "explicit_H": {
+                            "type": "integer",
+                            "description": "Explicit hydrogen count.",
+                            "minimum": 0
+                          },
+                          "implicit_H": {
+                            "type": "integer",
+                            "description": "Implicit hydrogen count.",
+                            "minimum": 0
+                          }
+                        },
+                        "required": [
+                          "source_graph_atom_index",
+                          "package_atom_name",
+                          "package_serial",
+                          "element",
+                          "formal_charge",
+                          "explicit_H",
+                          "implicit_H"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "description": "Ligand heavy atoms in source graph order."
+                    }
                   },
-                  "description": "Ligand heavy atoms in source graph order."
+                  "required": [
+                    "exact_source_smiles",
+                    "atoms"
+                  ],
+                  "additionalProperties": false
                 }
               },
               "required": [
-                "exact_source_smiles",
-                "atoms"
+                "L"
               ],
               "additionalProperties": false
             }
           },
           "required": [
-            "L"
+            "package_graphs"
           ],
           "additionalProperties": false
+        },
+        "ligand_state": {
+          "type": "object",
+          "properties": {
+            "source_formal_charge": {
+              "type": "integer",
+              "description": "Ligand net formal charge, elementary charges."
+            },
+            "H_count": {
+              "type": "integer",
+              "description": "Total ligand hydrogens.",
+              "minimum": 0
+            },
+            "atom_count": {
+              "type": "integer",
+              "description": "Total ligand atoms including hydrogens.",
+              "minimum": 1
+            }
+          },
+          "required": [
+            "source_formal_charge",
+            "H_count",
+            "atom_count"
+          ],
+          "additionalProperties": false
+        },
+        "fixed_ligand_source_indices": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "description": "Zero-based source atom index.",
+            "minimum": 0
+          },
+          "uniqueItems": true,
+          "description": "Ligand atoms held fixed in both stages."
         }
       },
       "required": [
-        "package_graphs"
+        "starting_complex",
+        "source_smiles",
+        "mapping",
+        "ligand_state",
+        "fixed_ligand_source_indices"
       ],
       "additionalProperties": false
     },
-    "ligand_state": {
+    "receptor": {
       "type": "object",
       "properties": {
-        "source_formal_charge": {
-          "type": "integer",
-          "description": "Ligand net formal charge, elementary charges."
+        "coordinates": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Local file path, absolute or relative to this JSON file; no URL fetching."
+            },
+            "format": {
+              "const": "npy"
+            },
+            "units": {
+              "const": "nanometer"
+            }
+          },
+          "required": [
+            "path",
+            "format",
+            "units"
+          ],
+          "additionalProperties": false
         },
-        "H_count": {
-          "type": "integer",
-          "description": "Total ligand hydrogens.",
-          "minimum": 0
+        "atom_metadata": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Local file path, absolute or relative to this JSON file; no URL fetching."
+            },
+            "format": {
+              "const": "json.gz"
+            }
+          },
+          "required": [
+            "path",
+            "format"
+          ],
+          "additionalProperties": false
         },
-        "atom_count": {
-          "type": "integer",
-          "description": "Total ligand atoms including hydrogens.",
-          "minimum": 1
+        "prepared_state": {
+          "const": "frozen_system",
+          "description": "Protonation, hydrogens, heme/metal chemistry and parameters are supplied in atom order by the prepared system; no reparameterization."
+        },
+        "heme_pdb_names": {
+          "type": "object",
+          "description": "Input heme PDB name to prepared atom name.",
+          "propertyNames": {
+            "minLength": 1,
+            "maxLength": 4
+          },
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4
+          }
         }
       },
       "required": [
-        "source_formal_charge",
-        "H_count",
-        "atom_count"
+        "coordinates",
+        "atom_metadata",
+        "prepared_state",
+        "heme_pdb_names"
       ],
       "additionalProperties": false
     },
-    "fixed_ligand_source_indices": {
-      "type": "array",
-      "items": {
-        "type": "integer",
-        "description": "Zero-based source atom index.",
-        "minimum": 0
+    "forcefield": {
+      "type": "object",
+      "properties": {
+        "system": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Local file path, absolute or relative to this JSON file; no URL fetching."
+            },
+            "format": {
+              "const": "openmm-xml.gz"
+            }
+          },
+          "required": [
+            "path",
+            "format"
+          ],
+          "additionalProperties": false
+        },
+        "model": {
+          "const": "prepared-CHARMM36-OpenFF",
+          "description": "Frozen merged system defines masses, bonded terms, charges, nonbonded parameters/exclusions and constraints. Order: receptor metadata then AddHs(source_smiles). Only positional restraint references/membership are rebuilt by protocol 0.1."
+        }
       },
-      "uniqueItems": true,
-      "description": "Ligand atoms held fixed in both stages."
+      "required": [
+        "system",
+        "model"
+      ],
+      "additionalProperties": false
     }
   },
   "required": [
     "schema_version",
     "protocol",
-    "heme_pdb_names",
-    "source_smiles",
-    "mapping",
-    "ligand_state",
-    "fixed_ligand_source_indices"
+    "ligand",
+    "receptor",
+    "forcefield"
   ],
   "additionalProperties": false
 }

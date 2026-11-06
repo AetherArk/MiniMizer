@@ -19,19 +19,19 @@ PACKET = Path(__file__).resolve().parents[1] / 'example'
 class ProtocolTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.config = minimize.validate(PACKET)
-        cls.mapping = cls.config['mapping']
-        cls.mol, _, _ = ligand.pdb_binding(PACKET / 'input.pdb', cls.mapping, cls.config['source_smiles'])
+        cls.config = minimize.validate(PACKET / 'config.json')
+        cls.mapping = cls.config['ligand']['mapping']
+        cls.mol, _, _ = ligand.pdb_binding(PACKET / 'input.pdb', cls.mapping, cls.config['ligand']['source_smiles'])
 
     def test_fresh_coordinates_accepted(self):
         with tempfile.TemporaryDirectory() as td:
             d = Path(td) / 'packet'
             shutil.copytree(PACKET, d)
-            _, writer, _ = ligand.pdb_binding(d / 'input.pdb', self.mapping, self.config['source_smiles'])
+            _, writer, _ = ligand.pdb_binding(d / 'input.pdb', self.mapping, self.config['ligand']['source_smiles'])
             xyz = self.mol.GetConformer().GetPositions().copy()
             xyz[0, 0] += .01
             (d / 'input.pdb').write_bytes(writer(xyz)[0])
-            minimize.validate(d)
+            minimize.validate(d / 'config.json')
 
     def test_missing_forcefield_rejected(self):
         with tempfile.TemporaryDirectory() as td:
@@ -39,7 +39,7 @@ class ProtocolTests(unittest.TestCase):
             shutil.copytree(PACKET, d)
             (d / 'system.xml.gz').unlink()
             with self.assertRaisesRegex(ValueError, 'Missing prepared input'):
-                minimize.validate(d)
+                minimize.validate(d / 'config.json')
 
     def test_receptor_order_rejected(self):
         import gzip
@@ -50,7 +50,7 @@ class ProtocolTests(unittest.TestCase):
             meta[0], meta[1] = meta[1], meta[0]
             (d / 'atoms.json.gz').write_bytes(gzip.compress(json.dumps(meta).encode()))
             with self.assertRaisesRegex(ValueError, 'ordering'):
-                minimize.validate(d)
+                minimize.validate(d / 'config.json')
 
     @unittest.skipUnless(os.environ.get('MINIMIZER_MD_IMAGE'), 'set MINIMIZER_MD_IMAGE for offline integration')
     def test_perturbed_coordinates_end_to_end(self):
@@ -58,11 +58,11 @@ class ProtocolTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             d, out = Path(td) / 'input', Path(td) / 'output'
             shutil.copytree(PACKET, d)
-            _, writer, _ = ligand.pdb_binding(d / 'input.pdb', self.mapping, self.config['source_smiles'])
+            _, writer, _ = ligand.pdb_binding(d / 'input.pdb', self.mapping, self.config['ligand']['source_smiles'])
             xyz = self.mol.GetConformer().GetPositions().copy()
             xyz[0, 0] += .01
             (d / 'input.pdb').write_bytes(writer(xyz)[0])
-            subprocess.run([sys.executable, '-B', str(PACKET.parent / 'minimize.py'), str(d), str(out),
+            subprocess.run([sys.executable, '-B', str(PACKET.parent / 'minimize.py'), str(d / 'config.json'), str(out),
                             '--md-image', os.environ['MINIMIZER_MD_IMAGE']], check=True)
             report = contracts.load(out / 'report.json', 'report')
             self.assertEqual(report['schema_version'], '1.0')
@@ -104,7 +104,7 @@ class ProtocolTests(unittest.TestCase):
         bad = copy.deepcopy(self.mapping)
         bad['package_graphs']['L']['exact_source_smiles'] += 'C'
         with self.assertRaisesRegex(ValueError, 'state_mismatch'):
-            ligand.pdb_binding(PACKET / 'input.pdb', bad, self.config['source_smiles'])
+            ligand.pdb_binding(PACKET / 'input.pdb', bad, self.config['ligand']['source_smiles'])
 
     def test_ligand_graph_and_identity_rejected(self):
         with tempfile.TemporaryDirectory() as td:
@@ -113,11 +113,11 @@ class ProtocolTests(unittest.TestCase):
             path.write_text(''.join(line for line in original.splitlines(keepends=True)
                                     if not line.startswith('CONECT')))
             with self.assertRaisesRegex(ValueError, 'graph_mismatch'):
-                ligand.pdb_binding(path, self.mapping, self.config['source_smiles'])
+                ligand.pdb_binding(path, self.mapping, self.config['ligand']['source_smiles'])
             bad = copy.deepcopy(self.mapping)
             bad['package_graphs']['L']['atoms'][0]['package_atom_name'] = 'WRONG'
             with self.assertRaisesRegex(ValueError, 'identity_mismatch'):
-                ligand.pdb_binding(PACKET / 'input.pdb', bad, self.config['source_smiles'])
+                ligand.pdb_binding(PACKET / 'input.pdb', bad, self.config['ligand']['source_smiles'])
 
     def test_real_mmff_gradient(self):
         h, plans = stereo.plans(self.mol)
@@ -153,7 +153,7 @@ class ProtocolTests(unittest.TestCase):
         self.assertTrue(minimize.eligible(dict(a, posebusters_pass=False)))
 
     def test_real_pdb_roundtrip_keeps_nonligand_bytes(self):
-        _, writer, targets = ligand.pdb_binding(PACKET / 'input.pdb', self.mapping, self.config['source_smiles'])
+        _, writer, targets = ligand.pdb_binding(PACKET / 'input.pdb', self.mapping, self.config['ligand']['source_smiles'])
         original = (PACKET / 'input.pdb').read_bytes().splitlines(keepends=True)
         changed, _ = writer(self.mol.GetConformer().GetPositions() + .01)
         for i, (a, b) in enumerate(zip(original, changed.splitlines(keepends=True))):

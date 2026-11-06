@@ -19,7 +19,7 @@ class ContractTests(unittest.TestCase):
         self.config = contracts.load(PACKET / 'config.json', 'config')
 
     def test_schemas_are_valid(self):
-        for name in ('config', 'report'):
+        for name in ('config', 'report', 'atoms'):
             Draft202012Validator.check_schema(json.loads(
                 (contracts.SCHEMAS / f'{name}.schema.json').read_text()))
 
@@ -39,8 +39,8 @@ class ContractTests(unittest.TestCase):
             ('fixed_ligand_source_indices', [-1]),
             ('fixed_ligand_source_indices', [21, 21]),
             ('fixed_ligand_source_indices', [999]),
-            ('ligand_state', dict(self.config['ligand_state'], atom_count=1)),
-            ('mapping', dict(self.config['mapping'], injected='unexpected')),
+            ('ligand_state', dict(self.config['ligand']['ligand_state'], atom_count=1)),
+            ('mapping', dict(self.config['ligand']['mapping'], injected='unexpected')),
             ('unknown', '$(touch should-not-exist)'),
         ]
         mutations += [('unknown', x) for x in (float('nan'), float('inf'), -float('inf'))]
@@ -52,9 +52,9 @@ class ContractTests(unittest.TestCase):
                     if src.name != 'config.json':
                         (packet / src.name).symlink_to(src)
                 bad = copy.deepcopy(self.config)
-                bad[key] = value
+                (bad['ligand'] if key in ('source_smiles', 'mapping', 'ligand_state', 'fixed_ligand_source_indices') else bad)[key] = value
                 (packet / 'config.json').write_text(json.dumps(bad))
-                with patch('sys.argv', ['minimize.py', str(packet), str(out)]), \
+                with patch('sys.argv', ['minimize.py', str(packet / 'config.json'), str(out)]), \
                         patch('minimize.stage1') as stage, patch('minimize.subprocess.run') as run:
                     with self.assertRaises(ValueError):
                         minimize.main()
@@ -66,7 +66,7 @@ class ContractTests(unittest.TestCase):
         for key, value in [('package_serial', '4035'), ('explicit_H', -1),
                            ('source_graph_atom_index', False), ('extra', 0)]:
             bad = copy.deepcopy(self.config)
-            bad['mapping']['package_graphs']['L']['atoms'][0][key] = value
+            bad['ligand']['mapping']['package_graphs']['L']['atoms'][0][key] = value
             with self.subTest(key=key), self.assertRaises(ValueError):
                 contracts.validate(bad, 'config')
 
@@ -93,7 +93,7 @@ class ContractTests(unittest.TestCase):
                 out = Path(td) / 'output'
                 def worker_run(*args, **kwargs):
                     (out / 'report.json').write_text(json.dumps(worker))
-                with patch('sys.argv', ['minimize.py', str(PACKET), str(out)]), \
+                with patch('sys.argv', ['minimize.py', str(PACKET / 'config.json'), str(out)]), \
                         patch('minimize.stage1', return_value='test-arm'), \
                         patch('minimize.subprocess.run', side_effect=worker_run), \
                         contextlib.redirect_stdout(io.StringIO()):
@@ -108,12 +108,13 @@ class ContractTests(unittest.TestCase):
     def test_stage1_failure_is_serializable(self):
         with tempfile.TemporaryDirectory() as td:
             out = Path(td) / 'output'
-            with patch('sys.argv', ['minimize.py', str(PACKET), str(out)]), \
+            with patch('sys.argv', ['minimize.py', str(PACKET / 'config.json'), str(out)]), \
                     patch('minimize.stage1', side_effect=ValueError('No valid minimum')), \
                     patch('minimize.subprocess.run') as run, \
                     contextlib.redirect_stdout(io.StringIO()):
                 with self.assertRaises(SystemExit):
                     minimize.main()
-                run.assert_not_called()
+                self.assertEqual(run.call_count, 1)  # OpenMM preflight only
+                self.assertIn('--validate-only', run.call_args.args[0])
             report = contracts.load(out / 'report.json', 'report')
             self.assertEqual(report['error'], 'ValueError: No valid minimum')
