@@ -1,8 +1,14 @@
-# MiniMizer 0.1
+# MiniMizer
 
-- Historical CYP minimization from saved prepared-state inputs.
-- MMFF94s ligand repair → OpenFF/CHARMM36 pocket minimization.
-- Frozen protein states; no raw-structure preparation.
+A simple minimization pipeline for cleaning up molecular structures from the PDB, cofolding output, or docking.
+
+This method is designed to be simple, fast, and reproducible.  
+
+## Workflow (v 0.1)
+- MMFF94s ligand repair
+- OpenFF/CHARMM36 pocket minimization.
+
+**This will be modified to a fully OpenFF workflow soon**
 
 ## Dependencies
 
@@ -16,19 +22,11 @@
 python minimize.py example replay --md-python /path/to/md/python
 ```
 
-- Alternative: `--md-image <existing-image>`; no image download.
-- Output directory must be new.
-- Outputs: coordinates, candidate PDB, optimization and verification reports.
-
 ## Tests
 
 ```sh
 python -m unittest discover -s tests -v
 ```
 
-- Included example: exact historical coordinate reproduction.
-- PoseBusters not rerun.
-
-## License
-
-- Apache-2.0; code adapted from ADMET-CYP.
+## Example
+- CYP3A4 protein-ligand cofolding
