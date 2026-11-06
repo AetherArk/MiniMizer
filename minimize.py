@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
-"""Run both historical stages from a hash-bound frozen prepared packet."""
+"""Minimize ligand coordinates using prepared, atom-mapped force-field inputs."""
 import os
 for key in ('OMP_NUM_THREADS', 'OPENBLAS_NUM_THREADS', 'MKL_NUM_THREADS', 'OPENMM_CPU_THREADS'):
     os.environ[key] = '1'
 os.environ['CUDA_VISIBLE_DEVICES'] = ''
 import argparse
 import gzip
-import hashlib
 import json
 from pathlib import Path
 import subprocess
@@ -21,24 +20,42 @@ def save(path, value):
     path.write_text(json.dumps(value, indent=2, allow_nan=False) + '\n')
 
 
-def sha(path):
-    return hashlib.sha256(path.read_bytes()).hexdigest()
-
-
 def validate(packet):
-    manifest = json.loads((packet / 'manifest.json').read_text())
-    if manifest['protocol'] != '0.1':
+    config = json.loads((packet / 'config.json').read_text())
+    if config['protocol'] != '0.1':
         raise ValueError('Unsupported protocol')
-    required = {'input.pdb', 'mapping.json', 'system.xml.gz', 'atoms.json.gz',
-                'assigned_full_state.json.gz', 'receptor-positions.npy', 'axial_selection.json',
-                'ligand_forcefield_state.json', 'expected_start.npy', 'expected_final.npy'}
-    if not required <= manifest['files'].keys():
-        raise ValueError('Incomplete packet hashes')
-    for name, digest in manifest['files'].items():
-        path = (packet / name).resolve()
-        if path.parent != packet.resolve() or sha(path) != digest:
-            raise ValueError('Packet identity failure: ' + name)
-    return manifest
+    for name in ('input.pdb', 'system.xml.gz', 'atoms.json.gz', 'receptor-positions.npy'):
+        if not (packet / name).is_file():
+            raise ValueError('Missing prepared input: ' + name)
+    receptor = np.load(packet / 'receptor-positions.npy', allow_pickle=False)
+    meta = json.loads(gzip.decompress((packet / 'atoms.json.gz').read_bytes()))
+    if receptor.shape != (len(meta), 3) or not np.isfinite(receptor).all():
+        raise ValueError('Invalid receptor coordinates')
+    if [a['index'] for a in meta] != list(range(len(meta))):
+        raise ValueError('Invalid receptor atom ordering')
+    identities = {(a['chain'], a['resid'], a['name']): a for a in meta}
+    if len(identities) != len(meta):
+        raise ValueError('Duplicate receptor identity')
+    seen = set()
+    for line in (packet / 'input.pdb').read_text().splitlines():
+        if not line.startswith(('ATOM  ', 'HETATM')) or line[21] == 'L':
+            continue
+        name = line[12:16].strip()
+        if line[21] == 'H':
+            name = config['heme_pdb_names'].get(name, name)
+        key = (line[21], line[22:26].strip(), name)
+        a = identities.get(key)
+        if a is None or key in seen or line[76:78].strip().upper() != a['element'].upper():
+            raise ValueError('Receptor identity mismatch')
+        seen.add(key)
+        xyz = np.array([float(line[k:k+8]) for k in (30, 38, 46)])
+        if not np.allclose(xyz, receptor[a['index']]*10, atol=.00051, rtol=0):
+            raise ValueError('PDB receptor differs from prepared receptor')
+    heavy = {key for key, a in identities.items() if a['element'] != 'H'}
+    if not heavy <= seen:
+        raise ValueError('Missing receptor heavy atoms')
+    ligand.pdb_binding(packet / 'input.pdb', config['mapping'], config['source_smiles'])
+    return config
 
 
 def eligible(a):
@@ -48,11 +65,11 @@ def eligible(a):
             and a['rmsd_A'] <= .5 and a['max_movement_A'] <= 1.)
 
 
-def stage1(packet, out, manifest):
-    mapping = json.loads((packet / 'mapping.json').read_text())
-    m, writer, _ = ligand.pdb_binding(packet / 'input.pdb', mapping, manifest['source_smiles'])
+def stage1(packet, out, config):
+    mapping = config['mapping']
+    m, writer, _ = ligand.pdb_binding(packet / 'input.pdb', mapping, config['source_smiles'])
     original = m.GetConformer().GetPositions().copy()
-    anchors = json.loads((packet / 'axial_selection.json').read_text())['fixed_ligand_source_indices']
+    anchors = config['fixed_ligand_source_indices']
     if any(i < 0 or i >= len(original) for i in anchors) or len(set(anchors)) != len(anchors):
         raise ValueError('Invalid axial indices')
     ligand.ACTIVE_ANCHORS = anchors
@@ -67,7 +84,7 @@ def stage1(packet, out, manifest):
                 # Parse serialized coordinates through the same graph-bound reader.
                 tmp = out / 'stage1.pdb'
                 tmp.write_bytes(data)
-                rt, _, _ = ligand.pdb_binding(tmp, mapping, manifest['source_smiles'])
+                rt, _, _ = ligand.pdb_binding(tmp, mapping, config['source_smiles'])
                 if not np.array_equal(rt.GetConformer().GetPositions(), rounded):
                     raise ValueError('PDB round-trip mismatch')
                 fullx = full.GetConformer().GetPositions().copy()
@@ -99,7 +116,7 @@ def stage1(packet, out, manifest):
 
 def main():
     if sys.flags.optimize:
-        raise RuntimeError('Python -O disables historical verification assertions')
+        raise RuntimeError('Python -O disables verification assertions')
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('packet', type=Path)
     parser.add_argument('output', type=Path)
@@ -108,12 +125,12 @@ def main():
     runtime.add_argument('--md-image', help='Existing Docker image; never pulled')
     args = parser.parse_args()
     packet, out = args.packet.resolve(), args.output.resolve()
-    manifest = validate(packet)
+    config = validate(packet)
     if out == packet or out in packet.parents:
         raise ValueError('Output must not contain packet')
     out.mkdir(parents=True, exist_ok=False)
-    arm = stage1(packet, out, manifest)
-    for name in ('system.xml', 'atoms.json', 'assigned_full_state.json'):
+    arm = stage1(packet, out, config)
+    for name in ('system.xml', 'atoms.json'):
         (out / name).write_bytes(gzip.decompress((packet / (name + '.gz')).read_bytes()))
     repo = Path(__file__).resolve().parent
     if args.md_image:
@@ -129,10 +146,9 @@ def main():
     subprocess.run(cmd, cwd=repo, check=True)
     report = json.loads((out / 'report.json').read_text())
     report['stage1_arm'] = arm
-    report['stage1_arm_matches_history'] = arm == manifest['expected_arm']
     save(out / 'report.json', report)
     print(json.dumps(report, indent=2))
-    if not report['reproduction_pass'] or not report['stage1_arm_matches_history']:
+    if not report['validation_pass']:
         raise SystemExit(1)
 
 

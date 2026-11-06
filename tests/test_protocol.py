@@ -1,6 +1,9 @@
-"""Focused tests on the real packet; no generated molecular fixtures."""
+"""Prepared-input checks; coordinate perturbations are functional tests, not datasets."""
 import copy
 import json
+import os
+import subprocess
+import sys
 from pathlib import Path
 import shutil
 import tempfile
@@ -16,32 +19,89 @@ PACKET = Path(__file__).resolve().parents[1] / 'example'
 class ProtocolTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.manifest = minimize.validate(PACKET)
-        cls.mapping = json.loads((PACKET / 'mapping.json').read_text())
-        cls.mol, _, _ = ligand.pdb_binding(PACKET / 'input.pdb', cls.mapping, cls.manifest['source_smiles'])
+        cls.config = minimize.validate(PACKET)
+        cls.mapping = cls.config['mapping']
+        cls.mol, _, _ = ligand.pdb_binding(PACKET / 'input.pdb', cls.mapping, cls.config['source_smiles'])
 
-    def test_packet_integrity_and_tamper(self):
+    def test_fresh_coordinates_accepted(self):
         with tempfile.TemporaryDirectory() as td:
             d = Path(td) / 'packet'
             shutil.copytree(PACKET, d)
-            (d / 'input.pdb').write_bytes((d / 'input.pdb').read_bytes() + b'\n')
-            with self.assertRaisesRegex(ValueError, 'identity'):
+            _, writer, _ = ligand.pdb_binding(d / 'input.pdb', self.mapping, self.config['source_smiles'])
+            xyz = self.mol.GetConformer().GetPositions().copy()
+            xyz[0, 0] += .01
+            (d / 'input.pdb').write_bytes(writer(xyz)[0])
+            minimize.validate(d)
+
+    def test_missing_forcefield_rejected(self):
+        with tempfile.TemporaryDirectory() as td:
+            d = Path(td) / 'packet'
+            shutil.copytree(PACKET, d)
+            (d / 'system.xml.gz').unlink()
+            with self.assertRaisesRegex(ValueError, 'Missing prepared input'):
                 minimize.validate(d)
 
-    def test_missing_hash_rejected(self):
+    def test_receptor_order_rejected(self):
+        import gzip
         with tempfile.TemporaryDirectory() as td:
-            d = Path(td)
-            manifest = copy.deepcopy(self.manifest)
-            del manifest['files']['system.xml.gz']
-            (d / 'manifest.json').write_text(json.dumps(manifest))
-            with self.assertRaisesRegex(ValueError, 'Incomplete'):
+            d = Path(td) / 'packet'
+            shutil.copytree(PACKET, d)
+            meta = json.loads(gzip.decompress((d / 'atoms.json.gz').read_bytes()))
+            meta[0], meta[1] = meta[1], meta[0]
+            (d / 'atoms.json.gz').write_bytes(gzip.compress(json.dumps(meta).encode()))
+            with self.assertRaisesRegex(ValueError, 'ordering'):
                 minimize.validate(d)
+
+    @unittest.skipUnless(os.environ.get('MINIMIZER_MD_IMAGE'), 'set MINIMIZER_MD_IMAGE for offline integration')
+    def test_perturbed_coordinates_end_to_end(self):
+        # Deliberate functional perturbation; same chemical graph and frozen parameters.
+        with tempfile.TemporaryDirectory() as td:
+            d, out = Path(td) / 'input', Path(td) / 'output'
+            shutil.copytree(PACKET, d)
+            _, writer, _ = ligand.pdb_binding(d / 'input.pdb', self.mapping, self.config['source_smiles'])
+            xyz = self.mol.GetConformer().GetPositions().copy()
+            xyz[0, 0] += .01
+            (d / 'input.pdb').write_bytes(writer(xyz)[0])
+            subprocess.run([sys.executable, '-B', str(PACKET.parent / 'minimize.py'), str(d), str(out),
+                            '--md-image', os.environ['MINIMIZER_MD_IMAGE']], check=True)
+            report = json.loads((out / 'report.json').read_text())
+            self.assertTrue(report['validation_pass'])
+            self.assertTrue(report['optimization']['scipy_success'])
+            self.assertTrue((out / report['candidate']).is_file())
+            x0 = np.load(out / 'starting_positions.npy')
+            x = np.load(out / 'local/k12552/positions.npy')
+            mobility = json.loads((out / 'mobility.json').read_text())
+            fixed = sorted(set(range(len(x))) - set(mobility['movable']))
+            np.testing.assert_array_equal(x[fixed], x0[fixed])
+            # Full-system restraint references must be this run's coordinates.
+            import xml.etree.ElementTree as ET
+            root = ET.parse(out / 'system.xml').getroot()
+            for force in root.findall('Forces/Force'):
+                if force.get('type') == 'CustomExternalForce':
+                    particles = force.findall('Particles/Particle')
+                    self.assertTrue(particles)
+                    for atom in particles:
+                        ref = [float(atom.attrib['param'+str(i)]) for i in (1, 2, 3)]
+                        np.testing.assert_array_equal(ref, x0[int(atom.attrib['index'])])
 
     def test_mapping_state_mismatch_rejected(self):
         bad = copy.deepcopy(self.mapping)
         bad['package_graphs']['L']['exact_source_smiles'] += 'C'
         with self.assertRaisesRegex(ValueError, 'state_mismatch'):
-            ligand.pdb_binding(PACKET / 'input.pdb', bad, self.manifest['source_smiles'])
+            ligand.pdb_binding(PACKET / 'input.pdb', bad, self.config['source_smiles'])
+
+    def test_ligand_graph_and_identity_rejected(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / 'input.pdb'
+            original = (PACKET / 'input.pdb').read_text()
+            path.write_text(''.join(line for line in original.splitlines(keepends=True)
+                                    if not line.startswith('CONECT')))
+            with self.assertRaisesRegex(ValueError, 'graph_mismatch'):
+                ligand.pdb_binding(path, self.mapping, self.config['source_smiles'])
+            bad = copy.deepcopy(self.mapping)
+            bad['package_graphs']['L']['atoms'][0]['package_atom_name'] = 'WRONG'
+            with self.assertRaisesRegex(ValueError, 'identity_mismatch'):
+                ligand.pdb_binding(PACKET / 'input.pdb', bad, self.config['source_smiles'])
 
     def test_real_mmff_gradient(self):
         h, plans = stereo.plans(self.mol)
@@ -77,7 +137,7 @@ class ProtocolTests(unittest.TestCase):
         self.assertTrue(minimize.eligible(dict(a, posebusters_pass=False)))
 
     def test_real_pdb_roundtrip_keeps_nonligand_bytes(self):
-        _, writer, targets = ligand.pdb_binding(PACKET / 'input.pdb', self.mapping, self.manifest['source_smiles'])
+        _, writer, targets = ligand.pdb_binding(PACKET / 'input.pdb', self.mapping, self.config['source_smiles'])
         original = (PACKET / 'input.pdb').read_bytes().splitlines(keepends=True)
         changed, _ = writer(self.mol.GetConformer().GetPositions() + .01)
         for i, (a, b) in enumerate(zip(original, changed.splitlines(keepends=True))):

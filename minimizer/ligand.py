@@ -24,6 +24,10 @@ def pdb_binding(path,mapping,smiles):
             edges.update(tuple(sorted((ns[0],b))) for b in ns[1:])
     coords=[]; target=[]
     for i,a in enumerate(authority):
+        atom = m.GetAtomWithIdx(i)
+        state = dict(element=atom.GetSymbol(), formal_charge=atom.GetFormalCharge(),
+                     explicit_H=atom.GetNumExplicitHs(), implicit_H=atom.GetNumImplicitHs())
+        if any(a[key] != value for key, value in state.items()): raise ValueError('mapping_atom_state_mismatch')
         j,line=atoms[a['package_serial']]
         if line[21:22]!='L' or line[17:20]!='LIG': raise ValueError('pdb_mapping_requires_target_L_LIG')
         if line[12:16].strip()!=a['package_atom_name'] or line[76:78].strip().upper()!=m.GetAtomWithIdx(i).GetSymbol().upper(): raise ValueError('atom_identity_mismatch')
@@ -34,7 +38,10 @@ def pdb_binding(path,mapping,smiles):
         m.GetAtomWithIdx(i).SetProp('source_atom_name',a['package_atom_name'])
         m.GetAtomWithIdx(i).SetProp('molFileAlias',a['package_atom_name'])
         coords.append([float(line[k:k+8]) for k in (30,38,46)]); target.append(j)
+    if not np.isfinite(coords).all(): raise ValueError('nonfinite_ligand_coordinates')
     serials={a['package_serial']:i for i,a in enumerate(authority)}
+    if {s for s, (_, line) in atoms.items() if line[21:22]=='L'} != set(serials):
+        raise ValueError('unmapped_ligand_atoms')
     if any((a in serials)!=(b in serials) for a,b in edges): raise ValueError('covalently_attached_ligand_unsupported')
     observed={tuple(sorted((serials[a],serials[b]))) for a,b in edges if a in serials and b in serials}
     if observed!={tuple(sorted((b.GetBeginAtomIdx(),b.GetEndAtomIdx()))) for b in m.GetBonds()}: raise ValueError('explicit_graph_mismatch')

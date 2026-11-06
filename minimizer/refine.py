@@ -1,9 +1,8 @@
-"""Stage 2: frozen historical parameters and prepared receptor; no assignment."""
+"""Stage 2: prepared force fields, fixed receptor states, fresh restraint references."""
 import os
 for key in ('OMP_NUM_THREADS', 'OPENBLAS_NUM_THREADS', 'MKL_NUM_THREADS', 'OPENMM_CPU_THREADS'):
     os.environ[key] = '1'
 os.environ['CUDA_VISIBLE_DEVICES'] = ''
-import hashlib
 import json
 from pathlib import Path
 import sys
@@ -21,9 +20,9 @@ def save(path, value):
 
 
 def run(packet, out):
-    manifest = json.loads((packet / 'manifest.json').read_text())
+    config = json.loads((packet / 'config.json').read_text())
     meta = json.loads((out / 'atoms.json').read_text())
-    mapping = json.loads((packet / 'mapping.json').read_text())
+    mapping = config['mapping']
     lig = Chem.Mol((out / 'source_optimized_with_H.rdkit').read_bytes())
     lines = (out / 'prepared_only.pdb').read_text().splitlines(keepends=True)
     byserial = {int(l[6:11]): l for l in lines if l.startswith(('ATOM  ', 'HETATM'))}
@@ -35,10 +34,10 @@ def run(packet, out):
     # md_worker.py reads it before forming x0. Do not silently remove this rounding.
     lig = Chem.Mol(lig.ToBinary())
     from .stereo import signature
-    authority = Chem.AddHs(Chem.MolFromSmiles(manifest['source_smiles']))
+    authority = Chem.AddHs(Chem.MolFromSmiles(config['source_smiles']))
     if signature(lig) != signature(authority):
         raise ValueError('Ligand state or atom order changed')
-    state = json.loads((packet / 'ligand_forcefield_state.json').read_text())
+    state = config['ligand_state']
     if (Chem.GetFormalCharge(lig) != state['source_formal_charge']
             or lig.GetNumAtoms() != state['atom_count']
             or sum(a.GetAtomicNum() == 1 for a in lig.GetAtoms()) != state['H_count']):
@@ -47,21 +46,35 @@ def run(packet, out):
     receptor = np.load(packet / 'receptor-positions.npy', allow_pickle=False)
     n, nh = len(receptor), lig.GetNumHeavyAtoms()
     x0 = np.concatenate([receptor, lig.GetConformer().GetPositions() / 10])
-    expected = np.load(packet / 'expected_start.npy', allow_pickle=False)
-    start_delta = float(np.max(np.abs(x0 - expected)))
-    # The accepted packet includes the frozen full-system restraint reference.
-    # Different Stage 1 coordinates require a separately qualified input packet.
-    if not np.array_equal(x0, expected):
-        save(out / 'start_mismatch.json', {'max_difference_nm': start_delta})
-        raise ValueError('Stage 1 does not reconstruct the frozen accepted start exactly')
     lp = x0[n:n+nh]
     selected = {a['resid'] for a in meta if a['chain'] == 'A' and a['element'] != 'H'
                 and np.min(np.linalg.norm(lp-x0[a['index']], axis=1)) <= .5}
     backbone = {'N', 'CA', 'C', 'O', 'OXT', 'H', 'H1', 'H2', 'H3', 'HA', 'HA2', 'HA3'}
-    anchors = json.loads((packet / 'axial_selection.json').read_text())['fixed_ligand_source_indices']
+    anchors = config['fixed_ligand_source_indices']
     movable = [a['index'] for a in meta if a['chain'] == 'A' and a['resid'] in selected
                and a['name'] not in backbone and not (a['resid'] == '442' and a['name'] == 'SG')]
     movable += [n+i for i in range(lig.GetNumAtoms()) if i not in anchors]
+    # Rebuild only coordinate-dependent restraints; preserve all frozen chemistry.
+    full = mm.XmlSerializer.deserialize((out / 'system.xml').read_text())
+    if full.getNumParticles() != len(x0):
+        raise ValueError('Force-field particle count mismatch')
+    external = [i for i, f in enumerate(full.getForces()) if isinstance(f, mm.CustomExternalForce)]
+    if len(external) != 1:
+        raise ValueError('Expected one positional restraint force')
+    old = full.getForce(external[0])
+    if old.getEnergyFunction() != '0.5*k*((x-x0)^2+(y-y0)^2+(z-z0)^2)':
+        raise ValueError('Unsupported external force')
+    full.removeForce(external[0])
+    restraint = mm.CustomExternalForce('0.5*k*((x-x0)^2+(y-y0)^2+(z-z0)^2)')
+    restraint.addGlobalParameter('k', 12552.)
+    for name in ('x0', 'y0', 'z0'):
+        restraint.addPerParticleParameter(name)
+    for i in sorted(movable):
+        if (i < n and meta[i]['element'] == 'H') or i >= n+nh:
+            continue
+        restraint.addParticle(i, x0[i])
+    full.addForce(restraint)
+    (out / 'system.xml').write_text(mm.XmlSerializer.serialize(full))
     np.save(out / 'starting_positions.npy', x0)
     save(out / 'mobility.json', dict(movable=movable, ligand_offset=n, ligand_heavy=nh))
     s, x0, contract = build(out)
@@ -124,18 +137,13 @@ def run(packet, out):
         verify(out, local)
     except AssertionError as exc:
         boundary_pass, boundary_error = False, str(exc)
-    final = np.load(packet / 'expected_final.npy', allow_pickle=False)
-    delta = float(np.max(np.abs(x-final)))
-    digest = hashlib.sha256(candidate.read_bytes()).hexdigest()
-    report = dict(protocol='0.1', pose_id=manifest['pose_id'], optimization=opt,
-                  start_max_difference_nm=start_delta, final_max_difference_nm=delta,
-                  final_array_byte_identical=(arm/'positions.npy').read_bytes() == (packet/'expected_final.npy').read_bytes(),
-                  candidate_sha256=digest, candidate_byte_identical=digest == manifest['expected_candidate_sha256'],
+    report = dict(protocol='0.1', optimization=opt,
+                  candidate='local/k12552/candidate.pdb',
                   boundary_pass=boundary_pass, boundary_error=boundary_error,
-                  boundary_threshold_kJ_mol=1e-5, physical_checks='not rerun; historical REFINED_PASS is provenance only',
-                  retention_status='REPLAY_DIAGNOSTICS_ONLY',
-                  reproduction_pass=bool(delta < 1e-12 and digest == manifest['expected_candidate_sha256']
-                                         and boundary_pass and opt['fixed_max_movement_nm'] == 0.))
+                  boundary_threshold_kJ_mol=1e-5,
+                  physical_checks='PoseBusters not run',
+                  validation_pass=bool(boundary_pass and opt['scipy_success']
+                                       and opt['fixed_max_movement_nm'] == 0.))
     save(out / 'report.json', report)
 
 
